@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "leaflet": "1.9.4",
-    "papaparse": "5.5.3"
+    "papaparse": "5.5.3",
+    "xlsx": "file:vendor/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@playwright/test": "1.56.0",

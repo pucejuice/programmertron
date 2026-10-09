@@ -15,19 +15,19 @@ filled in from memory for those, except where flagged as "from memory (unverifie
 | PapaParse | 5.5.3 | MIT | `node_modules/papaparse/LICENSE` and package.json (verified) |
 | SheetJS Community Edition (`xlsx`) | 0.20.3 (pinned) | Apache-2.0 | see below |
 
-SheetJS: the npm registry copy is old and SheetJS publishes current builds from its own CDN.
-The documented install is `npm i --save https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`.
-In the build sandbox cdn.sheetjs.com and docs.sheetjs.com are not reachable, so:
+SheetJS: the npm registry copy (0.18.5) is old; SheetJS publishes current builds from its own
+CDN and documents both `npm i --save https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` and
+vendoring the tarball into the project. This repo **vendors** it:
 
-- Installed locally for development only: npm `xlsx` 0.18.5, licence Apache-2.0 (verified from
-  `node_modules/xlsx/LICENSE`, which is the Apache License 2.0 text).
-- For 0.20.3 the Apache-2.0 licence is not verified from the sheetjs docs (unreachable from build
-  sandbox). A web search result states that SheetJS CE is Apache-2.0 licensed and that scripts and
-  Node modules are published at cdn.sheetjs.com; the exact 0.20.3 tarball name and its bundled
-  LICENSE file are not verified, unreachable from build sandbox. Action for whoever runs
-  `npm ci` in CI: after install, confirm `node_modules/xlsx/LICENSE` is Apache-2.0 and the
-  tarball URL resolves.
-- The pin is the CDN tarball URL in `package.json`; the app uses only `read`, `write` and `utils`.
+- `vendor/xlsx-0.20.3.tgz` was downloaded from
+  `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` by a one-off GitHub Actions job on
+  2026-10-09 (the build sandbox cannot reach cdn.sheetjs.com).
+  SHA-256 `8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8`.
+- `package.json` pins `"xlsx": "file:vendor/xlsx-0.20.3.tgz"`; `package-lock.json` records its
+  sha512 integrity, so `npm ci` needs no access to the CDN.
+- Licence verified 2026-10-09 from the tarball itself: `package.json` says `"license": "Apache-2.0"`
+  and the bundled `LICENSE` is the Apache License 2.0 text.
+- The app uses only `read`, `write` and `utils`.
 
 ### Development and test only (not shipped)
 

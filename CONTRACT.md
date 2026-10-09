@@ -16,5 +16,4 @@
   - `[data-testid=no-basemap]` option/checkbox
   - `[data-testid=busy]` progress overlay, `[data-testid=cancel-btn]`
 - Do not run `git commit`. Do not add npm dependencies; ask in the report instead.
-- `xlsx`: installed locally as npm 0.18.5 (--no-save, sandbox cannot reach cdn.sheetjs.com);
-  package.json will pin the CDN 0.20.3 tarball. Use only `read`, `write`, `utils` APIs.
+- `xlsx`: SheetJS 0.20.3, vendored at vendor/xlsx-0.20.3.tgz.
