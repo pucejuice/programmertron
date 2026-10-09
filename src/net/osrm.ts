@@ -1,6 +1,7 @@
 import type { DistanceTable, LatLon, RoadTableProvider } from '../types';
 import type { FetchFn } from './base';
-import { osrmTableUrl } from './endpoints';
+import { OSRM_DEMO_URL, osrmTableUrl } from './endpoints';
+import { rateLimited } from './ratelimit';
 
 function matrix(m: unknown, n: number, what: string, scale: number): number[][] {
   if (!Array.isArray(m) || m.length !== n) throw new Error(`Road server returned no ${what} table.`);
@@ -18,7 +19,9 @@ function matrix(m: unknown, n: number, what: string, scale: number): number[][] 
 /** Provider fetching an OSRM table (km, minutes) from the user's server. Throws on failure. */
 export function osrmProvider(serverUrl: string, fetchFn: FetchFn): RoadTableProvider {
   return async (points: LatLon[]): Promise<DistanceTable> => {
-    const res = await fetchFn(osrmTableUrl(serverUrl, points), { headers: { Accept: 'application/json' } });
+    const get = () => fetchFn(osrmTableUrl(serverUrl, points), { headers: { Accept: 'application/json' } });
+    // The public demo server asks for at most one request per second.
+    const res = serverUrl.replace(/\/+$/, '') === OSRM_DEMO_URL ? await rateLimited('osrm-demo', get) : await get();
     if (!res.ok) throw new Error(`Road server returned HTTP ${res.status}.`);
     const json = (await res.json()) as { code?: string; message?: string; distances?: unknown; durations?: unknown };
     if (json.code !== 'Ok') throw new Error(`Road server error: ${json.code ?? 'unknown'}${json.message ? ` (${json.message})` : ''}.`);

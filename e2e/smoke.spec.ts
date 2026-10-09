@@ -151,6 +151,7 @@ test('5-row fixture via file input, simple mode: P004 unrouted and last', async 
     mimeType: 'text/csv',
     buffer: Buffer.from(FIXTURE_5_CSV, 'utf8'),
   });
+  await page.locator('[data-testid=tab-setup]').click();
   await page.locator('[data-testid=simple-mode]').check();
   await route(page);
 

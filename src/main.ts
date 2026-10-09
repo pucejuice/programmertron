@@ -10,6 +10,7 @@ import { h } from './ui/dom';
 import { createMapView } from './ui/map';
 import { closePrintView } from './ui/print';
 import { initTheme, themeToggle } from './ui/theme';
+import { openRoadDialog, roadOn } from './ui/road';
 import { getState, saveNow, setState, subscribe, type AppState, type TabId } from './ui/state';
 
 const TABS: { id: TabId; label: string }[] = [
@@ -36,8 +37,9 @@ function build(): void {
   const redoBtn = h('button', { type: 'button', class: 'btn', title: 'Redo (Ctrl+Y)', testid: 'redo-btn', onClick: redo }, 'Redo');
   const csvBtn = h('button', { type: 'button', class: 'btn', testid: 'export-csv', onClick: exportCsv }, 'CSV');
   const xlsxBtn = h('button', { type: 'button', class: 'btn', testid: 'export-xlsx', onClick: exportXlsx }, 'XLSX');
-  const simple = h('input', { type: 'checkbox', testid: 'simple-mode' });
-  simple.addEventListener('change', () => updateSettings({ simpleMode: simple.checked }));
+  const straightBtn = h('button', { type: 'button', testid: 'dist-straight', onClick: () => updateSettings({ roadServerConfirmed: false }) }, 'Straight line');
+  const roadBtn = h('button', { type: 'button', testid: 'dist-road', onClick: () => { if (!roadOn(getState().settings)) void openRoadDialog(); } }, 'Road network');
+  const distToggle = h('div', { class: 'seg', role: 'group', 'aria-label': 'Distances', testid: 'dist-toggle' }, straightBtn, roadBtn);
   const stale = h('span', { class: 'chip warn', hidden: true }, 'Out of date: press Route');
   const notice = h('div', { class: 'notice', role: 'status', hidden: true, testid: 'notice' });
 
@@ -45,7 +47,7 @@ function build(): void {
     h('div', { class: 'title-row' }, h('h1', null, 'Job Router'), stale, themeToggle()),
     summary,
     h('div', { class: 'btn-row' }, routeBtn, undoBtn, redoBtn, h('span', { class: 'spacer' }), csvBtn, xlsxBtn),
-    h('label', { class: 'check' }, simple, 'Simple (old program) mode'),
+    h('div', { class: 'dist-row' }, h('span', { class: 'dist-label' }, 'Distances'), distToggle),
     notice,
   );
 
@@ -90,7 +92,11 @@ function build(): void {
     undoBtn.disabled = s.undoCount === 0 || !!s.busy;
     redoBtn.disabled = s.redoCount === 0 || !!s.busy;
     csvBtn.disabled = xlsxBtn.disabled = !s.plan;
-    simple.checked = s.settings.simpleMode;
+    const road = roadOn(s.settings);
+    straightBtn.setAttribute('aria-pressed', String(!road || s.settings.simpleMode));
+    roadBtn.setAttribute('aria-pressed', String(road && !s.settings.simpleMode));
+    straightBtn.disabled = roadBtn.disabled = s.settings.simpleMode || !!s.busy;
+    distToggle.title = s.settings.simpleMode ? 'Simple (old program) mode is on in Setup: straight-line only.' : '';
     stale.hidden = !(s.planStale && s.plan);
     for (const [id, b] of tabBtns) {
       b.setAttribute('aria-selected', String(s.tab === id));

@@ -62,9 +62,13 @@ export function mountSetup(root: HTMLElement): void {
     const put = (...c: (Node | null | false)[]) => root.append(...(c.filter(Boolean) as Node[]));
 
     put(
-      simple
-        ? h('div', { class: 'callout' }, 'Simple (old program) mode is on: one worker, no days, start at the centroid, open end, no 2-opt. Untick it at the top of the panel to use the controls below.')
-        : null,
+      h('fieldset', { class: 'card' },
+        h('legend', null, 'Routing method'),
+        checkbox('Simple (old program) mode', simple, (v) => updateSettings({ simpleMode: v }), 'simple-mode'),
+        h('p', { class: 'muted' }, simple
+          ? 'On: one worker, no days, start at the centroid, open end, no 2-opt, straight-line distances. This matches the old desktop program exactly. Untick it to use the controls below.'
+          : 'Reproduces the old desktop program exactly (one worker, nearest-neighbour from the centroid). Use it to check results against the old tool.'),
+      ),
     );
 
     // ----- Base -----
@@ -206,7 +210,7 @@ export function mountSetup(root: HTMLElement): void {
         field('Basemap tile URL', tile, 'Tile requests tell the tile server which area you are viewing. Use the "No basemap" switch on the map to turn tiles off.'),
         tileMsg,
         h('div', { class: 'btn-row' }, h('button', { type: 'button', class: 'btn small', onClick: () => updateSettings({ tileUrl: OSM_TILE_URL }, false) }, 'Reset to the OpenStreetMap default')),
-        field('Road routing server URL (optional)', road, 'An OSRM-compatible server. Off by default; distances are straight-line.'),
+        field('Road routing server URL (optional)', road, 'An OSRM-compatible server, used when Distances is set to Road network at the top of the panel.'),
         roadMsg,
         set.roadServerUrl
           ? h('div', { class: 'callout warn-box' },

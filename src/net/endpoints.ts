@@ -29,6 +29,9 @@ export function nominatimReverseUrl(p: LatLon): string {
   return `${NOMINATIM_BASE}/reverse?format=jsonv2&lat=${p.lat.toFixed(5)}&lon=${p.lon.toFixed(5)}`;
 }
 
+/** The OSRM project's public demo server: light use only, car profile, worldwide. */
+export const OSRM_DEMO_URL = 'https://router.project-osrm.org';
+
 /** OSRM table URL: {server}/table/v1/driving/{lon,lat;...}?annotations=distance,duration */
 export function osrmTableUrl(server: string, pts: LatLon[]): string {
   const base = server.trim().replace(/\/+$/, '');

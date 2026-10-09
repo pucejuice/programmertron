@@ -17,8 +17,9 @@ run sheets. Built with TypeScript and Vite; hosted as a static site on GitHub Pa
   2. Base lookup. One single averaged point (the centroid of all jobs) may be sent to
      OpenStreetMap Overpass to find the nearest town.
   3. Typed address. An address you type for a start or end point may be sent to Nominatim.
-  4. Optional road routing, off by default. If you enter an OSRM-compatible server URL, job
-     coordinates are sent to that server, after you tick a confirmation box.
+  4. Optional road routing, off by default. Switching Distances to "Road network" asks for an
+     OSRM-compatible server URL (or offers the public OSRM demo server) and a confirmation tick;
+     only then are job coordinates sent to that server.
 - This repository contains no real job data. Tests and examples use synthetic data only.
 - The app autosaves to this browser's storage (localStorage / IndexedDB) on your machine.
   The Clear all data button removes it.
@@ -141,7 +142,11 @@ or-opt moves of free jobs only.
 
 ## Limits
 
-- Distances are straight-line (haversine, R = 6371 km) by default, not road distances.
+- Distances are straight-line (haversine, R = 6371 km) by default, not road distances. The
+  "Distances: Straight line | Road network" switch at the top of the panel changes this.
+- "Simple (old program) mode" is on the Setup tab. It always uses straight-line distances.
+- The public OSRM demo server is for light use only (one request per second, which the app
+  respects); a large plan with many days is slow on it. Use your own OSRM server for regular work.
 - Routing is a heuristic (nearest-neighbour plus 2-opt, 5 s limit per route); it is not optimal.
 - Road routing is optional, off by default, and sends job coordinates to the server you name.
   If that server fails the app falls back to straight-line with a visible warning.

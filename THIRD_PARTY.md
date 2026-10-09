@@ -83,6 +83,15 @@ How the app complies: exactly one small request per routing session, carrying on
 centroid (one coordinate pair); result cached keyed by the centroid rounded to 2 dp; failure or
 offline falls back to the centroid as base with a visible note; requests are rate limited.
 
+### OSRM public demo server (router.project-osrm.org)
+
+Offered as a one-tap choice in the "Use road network" dialog; never used unless the user
+switches Distances to Road network and ticks the confirmation box. The usage policy page was
+not verified (unreachable from build sandbox). From memory (unverified): it is a demo service
+for light, non-heavy use, limited to about one request per second, car profile only, with no
+uptime guarantee. The app sends at most one table request per second to it and identifies
+itself by Referer. Re-check the current terms before relying on it.
+
 ### ODbL and OSM attribution
 Status: not verified, unreachable from build sandbox (osmfoundation.org Licence/Attribution_Guidelines).
 From memory (unverified): OSM data and tiles are under the ODbL; reuse needs the credit
