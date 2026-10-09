@@ -1,5 +1,4 @@
-/// <reference types="vitest" />
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 // GitHub Pages serves the site from /<repo>/.
 export default defineConfig({

@@ -33,8 +33,8 @@ vendoring the tarball into the project. This repo **vendors** it:
 
 | Package | Version | Licence (verified from package.json and LICENSE) |
 |---|---|---|
-| vite | 6.3.5 | MIT |
-| vitest | 3.2.4 | MIT |
+| vite | 8.3.4 | MIT |
+| vitest | 5.0.3 | MIT |
 | typescript | 5.8.3 | Apache-2.0 |
 | @playwright/test | 1.56.0 | Apache-2.0 |
 | jsdom | 26.1.0 | MIT |
