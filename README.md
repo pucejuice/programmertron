@@ -68,7 +68,9 @@ if the repository is renamed.
 ## Input format and column detection
 
 - Files: `.csv` (UTF-8, BOM tolerated) or `.xlsx` (first sheet by default; a sheet chooser appears
-  if there are several). Load with the file picker or by drag and drop.
+  if there are several). Load by dragging a file onto the drop zone (or anywhere on the page) or by tapping it to browse.
+- Theme: Auto (follows the system), Light or Dark, from the toggle in the panel header. The choice
+  is kept in this browser; printed run sheets are always black on white.
 - Rows are parsed as arrays, never keyed by header name, so duplicate headers survive.
 - Latitude column header (trimmed, case-insensitive): `lat`, `latitude`. Longitude: `long`, `lon`,
   `lng`, `longitude`. The first match wins. If either is missing, a column-mapping dialog lists all

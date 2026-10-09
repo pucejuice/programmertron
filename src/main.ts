@@ -9,6 +9,7 @@ import { mountSetup } from './ui/panels/setup';
 import { h } from './ui/dom';
 import { createMapView } from './ui/map';
 import { closePrintView } from './ui/print';
+import { initTheme, themeToggle } from './ui/theme';
 import { getState, saveNow, setState, subscribe, type AppState, type TabId } from './ui/state';
 
 const TABS: { id: TabId; label: string }[] = [
@@ -41,7 +42,7 @@ function build(): void {
   const notice = h('div', { class: 'notice', role: 'status', hidden: true, testid: 'notice' });
 
   const header = h('header', { class: 'panel-head' },
-    h('div', { class: 'title-row' }, h('h1', null, 'Job Router'), stale),
+    h('div', { class: 'title-row' }, h('h1', null, 'Job Router'), stale, themeToggle()),
     summary,
     h('div', { class: 'btn-row' }, routeBtn, undoBtn, redoBtn, h('span', { class: 'spacer' }), csvBtn, xlsxBtn),
     h('label', { class: 'check' }, simple, 'Simple (old program) mode'),
@@ -133,14 +134,16 @@ function build(): void {
   // ----- drag and drop of files anywhere -----
   let depth = 0;
   const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
-  window.addEventListener('dragenter', (e) => { if (hasFiles(e)) { depth++; drop.hidden = false; } });
-  window.addEventListener('dragleave', (e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; drop.hidden = true; } });
+  const zoneOver = (on: boolean) => document.querySelectorAll('.dropzone').forEach((z) => z.classList.toggle('over', on));
+  window.addEventListener('dragenter', (e) => { if (hasFiles(e)) { depth++; drop.hidden = false; zoneOver(true); } });
+  window.addEventListener('dragleave', (e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; drop.hidden = true; zoneOver(false); } });
   window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
   window.addEventListener('drop', (e) => {
     if (!hasFiles(e)) return;
     e.preventDefault();
     depth = 0;
     drop.hidden = true;
+    zoneOver(false);
     const f = e.dataTransfer?.files?.[0];
     if (f) void loadFile(f);
   });
@@ -148,5 +151,6 @@ function build(): void {
   window.addEventListener('beforeunload', () => saveNow());
 }
 
+initTheme();
 build();
 restore();

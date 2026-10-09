@@ -26,16 +26,25 @@ export function notRoutedList(s: AppState): HTMLElement {
 }
 
 export function mountLoad(root: HTMLElement): void {
-  const fileInput = h('input', { type: 'file', accept: '.csv,.xlsx,.txt,.json', testid: 'file-input', id: 'file-input', 'aria-label': 'Choose a CSV or XLSX file' });
+  const fileInput = h('input', { type: 'file', class: 'sr-only', accept: '.csv,.xlsx,.txt,.json', testid: 'file-input', id: 'file-input', 'aria-label': 'Choose a CSV or XLSX file' });
   fileInput.addEventListener('change', () => {
     const f = fileInput.files?.[0];
     if (f) void loadFile(f).finally(() => { fileInput.value = ''; });
   });
+  // The drop itself is handled by the page-wide listener in main.ts, so a file dropped
+  // anywhere loads; this box is the visible target and, when tapped, the file browser.
+  const icon = h('span', { class: 'dz-icon', 'aria-hidden': 'true' });
+  icon.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>';
+  const zone = h('label', { class: 'dropzone', for: 'file-input', testid: 'dropzone' },
+    icon,
+    h('span', { class: 'dz-main' }, 'Drag a file here or ', h('u', null, 'browse')),
+    h('span', { class: 'muted' }, '.csv or .xlsx · read in your browser, never uploaded'),
+    fileInput,
+  );
   const picker = h('div', { class: 'card' },
     h('h3', null, 'Load jobs'),
-    h('p', { class: 'muted' }, 'Choose a .csv or .xlsx file, or drop one anywhere on this page. It is read in your browser and never uploaded.'),
-    h('div', { class: 'row' }, fileInput),
-    h('div', { class: 'btn-row' }, h('button', { type: 'button', class: 'btn', testid: 'sample-btn', onClick: () => void loadSample() }, 'Try sample data')),
+    zone,
+    h('div', { class: 'btn-row', style: 'margin-top: 10px' }, h('button', { type: 'button', class: 'btn', testid: 'sample-btn', onClick: () => void loadSample() }, 'Try sample data')),
   );
   const dyn = h('div', { class: 'load-dyn' });
   root.append(picker, dyn);
