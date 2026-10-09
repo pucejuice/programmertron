@@ -112,7 +112,30 @@ rows, settings, assignments, locks) saved only to your disk.
 
 ## Grouping and routing method
 
-TODO(core)
+**Worker and day grouping: capacity-balanced k-means.** The start is seeded k-means++
+(a fixed-seed mulberry32 PRNG, so the same file always gives the same groups), on a local
+planar projection. Each Lloyd iteration assigns points greedily to their nearest centroid
+subject to hard capacities, then a final pass of single moves and pairwise swaps tightens
+the groups without breaking capacity. Groups are numbered by sweep angle of their centroid
+around the base.
+
+*Why:* k-means gives compact geographic groups that suit crews driving out from one base
+(an angular sweep makes long thin wedges when jobs sit at different distances). Hard
+capacities guarantee the ±1 balance, and the fixed seed makes it deterministic. Locked jobs
+stay in their group and seed its centroid. When a capacity can't fit every job it is
+extended, so a job is never dropped.
+
+Days reuse the same clusterer, with capacities `[jobsPerDay, ..., remainder]`, so 40 jobs
+at 7 per day give 7, 7, 7, 7, 7, 5. Hours mode finds the smallest number of days for which
+every day's estimated time (route km / speed + jobs x minutes per job) fits the hours per day.
+
+**Sequencing.** Nearest-neighbour runs from the start, with visited jobs tracked by row and
+ties going to the lower row index. Then comes first-improvement 2-opt: each pass scans i
+ascending, then j ascending, and applies the first reversal that saves more than 1e-9 km.
+It stops after a pass with no improvement, or at the time limit (5 s by default) with a
+visible note. The start is fixed, and the end is fixed when set. Jobs with `MANUAL_SEQ`
+keep their relative order. Other jobs go in by cheapest insertion and are then improved by
+or-opt moves of free jobs only.
 
 ## Limits
 
