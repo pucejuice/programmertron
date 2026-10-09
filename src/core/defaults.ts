@@ -32,3 +32,4 @@ export function defaultSettings(): Settings {
     seed: 42,
   };
 }
+export const OSM_COPYRIGHT_URL = 'https://www.openstreetmap.org/copyright';
