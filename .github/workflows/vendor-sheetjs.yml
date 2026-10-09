@@ -1,0 +1,30 @@
+# One-off helper: the build sandbox cannot reach cdn.sheetjs.com, so this job downloads the
+# pinned SheetJS CE tarball (the vendoring method SheetJS documents) and commits it to vendor/.
+name: Vendor SheetJS
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/vendor-sheetjs.yml']
+permissions:
+  contents: write
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download xlsx-0.20.3.tgz
+        run: |
+          mkdir -p vendor
+          if [ -f vendor/xlsx-0.20.3.tgz ]; then echo "already vendored"; exit 0; fi
+          curl -fsSL -o vendor/xlsx-0.20.3.tgz https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
+          tar -tzf vendor/xlsx-0.20.3.tgz package/package.json
+          tar -xzOf vendor/xlsx-0.20.3.tgz package/package.json | grep -E '"(version|license)"'
+          sha512sum vendor/xlsx-0.20.3.tgz
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vendor/xlsx-0.20.3.tgz
+          git diff --cached --quiet && exit 0
+          git commit -m "Vendor SheetJS CE xlsx-0.20.3.tgz from cdn.sheetjs.com"
+          git push
