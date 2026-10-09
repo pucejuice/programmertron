@@ -1,0 +1,58 @@
+/* Run sheets: A4 portrait, one sheet per worker per day. */
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  body.print-open #app,
+  body.print-open .modal-backdrop,
+  body.print-open .busy {
+    display: none !important;
+  }
+  body.print-open .print-view {
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
+  .print-bar {
+    display: none !important;
+  }
+  .print-view .pages {
+    display: block !important;
+    gap: 0 !important;
+    padding: 0 !important;
+  }
+  .print-view .sheet {
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid-page;
+  }
+  .print-view .sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .print-view table {
+    break-inside: auto;
+  }
+  .print-view tr {
+    break-inside: avoid;
+  }
+  .print-view thead {
+    display: table-header-group;
+  }
+}
