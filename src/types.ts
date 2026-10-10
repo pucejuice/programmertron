@@ -184,6 +184,12 @@ export interface PlanInput {
    * Applied after day splitting. Optional.
    */
   dayOrder?: Record<number, number[]>;
+  /**
+   * Partial re-route only: keep every job's current day from `assignments` instead of
+   * re-splitting (used after manual changes, so only the moved jobs change day). Jobs with
+   * no day join the existing day with the nearest centre. Days are renumbered 1..k.
+   */
+  keepDays?: boolean;
 }
 
 export interface Progress {

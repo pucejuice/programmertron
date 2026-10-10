@@ -13,7 +13,7 @@ import type {
 } from '../types';
 import { balancedCapacities, balancedKMeans } from './cluster';
 import { estimateHours, splitDays } from './days';
-import { centroid } from './geo';
+import { centroid, haversineKm } from './geo';
 import {
   matrixDist,
   nearestNeighbour,
@@ -56,6 +56,36 @@ function validPos(v: number | null | undefined): v is number {
  * nearest-neighbour + 2-opt (+ MANUAL_SEQ anchors) -> Plan. Simple mode forces
  * 1 worker, no days, start = centroid, open end, no 2-opt.
  */
+/**
+ * Current day of each job (keepDays mode). Jobs without one join the day whose centre is
+ * nearest. Returns null when no job has a day yet (then the caller splits as usual).
+ */
+function keepCurrentDays(wj: Job[], asg: Assignments): number[] | null {
+  const sums = new Map<number, { lat: number; lon: number; n: number }>();
+  for (const j of wj) {
+    const d = asg[j.row]?.day;
+    if (d === null || d === undefined || !(d >= 1)) continue;
+    const c = sums.get(d) ?? { lat: 0, lon: 0, n: 0 };
+    c.lat += j.lat;
+    c.lon += j.lon;
+    c.n++;
+    sums.set(d, c);
+  }
+  if (sums.size === 0) return null;
+  const centres = [...sums].map(([d, c]) => ({ d, p: { lat: c.lat / c.n, lon: c.lon / c.n } })).sort((a, b) => a.d - b.d);
+  return wj.map((j) => {
+    const d = asg[j.row]?.day;
+    if (d !== null && d !== undefined && d >= 1) return d;
+    let best = centres[0];
+    let bestKm = Infinity;
+    for (const c of centres) {
+      const km = haversineKm(j, c.p);
+      if (km < bestKm) { bestKm = km; best = c; }
+    }
+    return best.d;
+  });
+}
+
 export async function buildPlan(input: PlanInput, opts: PlanOptions = {}): Promise<Plan> {
   const now = opts.now ?? Date.now;
   const check = () => {
@@ -160,8 +190,17 @@ export async function buildPlan(input: PlanInput, opts: PlanOptions = {}): Promi
         warnedHours = true;
       }
     }
+    const kept = splitOn && partial && input.keepDays ? keepCurrentDays(wj, asg) : null;
     if (!splitOn) {
       days = wj.map(() => null);
+    } else if (kept) {
+      days = kept;
+      const order = input.dayOrder?.[w];
+      const present = [...new Set(days as number[])].sort((a, b) => a - b);
+      const seq = order && order.length ? order.filter((d) => present.includes(d)) : [];
+      const map = new Map<number, number>();
+      [...seq, ...present.filter((d) => !seq.includes(d))].forEach((d, idx) => map.set(d, idx + 1));
+      days = days.map((d) => map.get(d as number) as number);
     } else {
       const fixedDay = wj.map((j) => {
         const a = asg[j.row];

@@ -9,6 +9,8 @@ export interface PlanFile {
   settings: Settings;
   assignments: Assignments;
   dayOrder: Record<number, number[]>;
+  /** Manual stop order set by dragging (row -> position in its day). Optional for older files. */
+  pins?: Record<number, number>;
   plan: Plan | null;
 }
 
@@ -69,6 +71,7 @@ export function parsePlanFile(text: string): PlanFile {
     if (!isObj(a) || typeof a.worker !== 'number') fail(`assignment for row ${k} is malformed.`);
   }
   if (!isObj(raw.dayOrder)) fail('"dayOrder" is missing.');
+  if (raw.pins !== undefined && (!isObj(raw.pins) || Object.values(raw.pins).some((v) => typeof v !== 'number' || !Number.isFinite(v)))) fail('"pins" is malformed.');
 
   if (raw.plan !== null) {
     const p = raw.plan;

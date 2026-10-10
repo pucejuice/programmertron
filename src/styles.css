@@ -362,3 +362,26 @@ details.day > summary[draggable=true] { cursor: grab; }
 .seg button:disabled { cursor: not-allowed; opacity: 0.6; }
 .road-dialog { display: flex; flex-direction: column; gap: 10px; }
 .road-dialog .err { color: var(--danger); font-size: 12.5px; }
+
+/* ---------- plan drag and drop ---------- */
+.stop { grid-template-columns: 16px 24px minmax(0, 1fr) 14px 54px 58px; }
+.grip { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 22px; color: var(--muted); touch-action: none; cursor: grab; }
+.grip:empty { cursor: default; }
+.stop.movable:hover .grip, .grip:active { color: var(--accent); }
+.stop.movable { cursor: grab; }
+summary .grip { margin-left: -4px; }
+.drag-ghost { position: fixed; left: 0; top: 0; z-index: 5000; pointer-events: none; padding: 5px 10px; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); white-space: nowrap; }
+body.dragging-now, body.dragging-now * { cursor: grabbing !important; user-select: none; }
+.stop.drop-before { box-shadow: inset 0 3px 0 var(--accent); }
+.stop.drop-after { box-shadow: inset 0 -3px 0 var(--accent); }
+.reopt { margin-left: 8px; }
+@media (max-width: 900px) {
+  .stop { grid-template-columns: 16px 22px minmax(0, 1fr) 12px 46px 50px; }
+}
+@media (pointer: coarse) {
+  .grip { width: 28px; height: 32px; }
+  .stop { grid-template-columns: 28px 22px minmax(0, 1fr) 12px 46px 50px; }
+}
+.jr-draghint { top: 56px; left: 50%; transform: translateX(-50%); font-weight: 600; white-space: nowrap; max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; }
+.jr-draghint.ok { border-color: var(--accent); color: var(--accent); }
+.leaflet-marker-draggable .jr-pin { cursor: grab; }

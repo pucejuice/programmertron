@@ -12,7 +12,7 @@ import type { Assignments, Base, BaseSource, ColumnMapping, LatLon, Plan, PlanIn
 import { startRoute, RouteCancelled, type RouteRun } from '../worker/client';
 import { chooseLatLon, chooseSheet } from './dialogs';
 import { downloadBlob } from './dom';
-import { jobMap, routesOfWorker } from './planutil';
+import { indexPlan, jobMap, routesOfWorker } from './planutil';
 import {
   baseCacheKV, clearHistory, getState, loadSaved, notify, pushUndo, resetAll, setState, undo as undoState, redo as redoState,
   type AppState, type PickMode,
@@ -88,6 +88,7 @@ async function ingest(table: Table, fileName: string): Promise<void> {
     fileName,
     assignments: {},
     dayOrder: {},
+    pins: {},
     plan: null,
     planStale: false,
     selection: [],
@@ -134,6 +135,7 @@ export function useWorkerColumn(column: number): void {
     mapping: { ...s.mapping, worker: column },
     assignments,
     dayOrder: {},
+    pins: {},
     plan: null,
     planStale: false,
     settings: { ...s.settings, workers, simpleMode: false },
@@ -160,7 +162,7 @@ export function setWorkerCount(n: number): void {
   }
   const assignments: Assignments = {};
   for (const [k, a] of Object.entries(s.assignments)) if (a.worker < count && a.lockedWorker) assignments[Number(k)] = a;
-  setState({ settings: { ...s.settings, workers }, assignments, plan: null, planStale: false, dayOrder: {}, selection: [] });
+  setState({ settings: { ...s.settings, workers }, assignments, plan: null, planStale: false, dayOrder: {}, pins: {}, selection: [] });
   clearHistory();
 }
 
@@ -254,18 +256,21 @@ export function validateSettings(s: AppState): string | null {
  * The core applies dayOrder on top of a fresh split, so locked day numbers (which the user
  * sees in the permuted numbering) are translated back to the fresh numbering first.
  */
-function toFreshDays(a: Assignments, dayOrder: Record<number, number[]>): Assignments {
+function toFreshDays(a: Assignments, dayOrder: Record<number, number[]>, all = false): Assignments {
   if (Object.keys(dayOrder).length === 0) return a;
   const out: Assignments = {};
   for (const [k, v] of Object.entries(a)) {
     const order = dayOrder[v.worker];
-    out[Number(k)] = v.lockedDay && v.day !== null && order?.[v.day - 1] !== undefined ? { ...v, day: order[v.day - 1] } : v;
+    out[Number(k)] = (all || v.lockedDay) && v.day !== null && order?.[v.day - 1] !== undefined ? { ...v, day: order[v.day - 1] } : v;
   }
   return out;
 }
 
-/** Re-route. only === null: full re-run (including automatic worker grouping). */
-export async function runRoute(only: number[] | null): Promise<boolean> {
+/**
+ * Re-route. only === null: full re-run (including automatic worker grouping).
+ * keepDays: after a manual change, keep every job's current day so only the moved jobs move.
+ */
+export async function runRoute(only: number[] | null, keepDays = false): Promise<boolean> {
   const s = getState();
   if (s.busy) return false;
   if (!s.extracted || s.extracted.jobs.length === 0) {
@@ -288,14 +293,18 @@ export async function runRoute(only: number[] | null): Promise<boolean> {
   const full = only === null;
   const locked: Assignments = {};
   for (const [k, a] of Object.entries(st.assignments)) if (a.lockedWorker || a.lockedDay) locked[Number(k)] = a;
+  // Stops ordered by hand keep that order (as MANUAL_SEQ anchors); other jobs are routed around them.
+  const pins = st.pins;
+  const jobs = Object.keys(pins).length ? st.extracted!.jobs.map((j) => (pins[j.row] !== undefined ? { ...j, manualSeq: pins[j.row] } : j)) : st.extracted!.jobs;
   const input: PlanInput = {
-    jobs: st.extracted!.jobs,
+    jobs,
     notRouted: st.extracted!.notRouted,
     settings: st.settings,
-    assignments: full ? locked : toFreshDays(st.assignments, st.dayOrder),
+    assignments: full ? locked : toFreshDays(st.assignments, st.dayOrder, keepDays),
     onlyWorkers: full ? null : only,
     previous: full ? null : st.plan,
     dayOrder: full ? {} : st.dayOrder,
+    keepDays: !full && keepDays,
   };
   const run = startRoute(input, (p) => setState({ busy: { message: p.message, done: p.done, total: p.total } }));
   current = run;
@@ -325,7 +334,7 @@ export async function runRoute(only: number[] | null): Promise<boolean> {
 
 function rollback(revert: () => ReturnType<ReturnType<typeof pushUndo>>): void {
   const snap = revert();
-  setState({ assignments: snap.assignments, dayOrder: snap.dayOrder, plan: snap.plan, planStale: snap.planStale });
+  setState({ assignments: snap.assignments, dayOrder: snap.dayOrder, pins: snap.pins, plan: snap.plan, planStale: snap.planStale });
 }
 
 /** Assign jobs to a worker (and optionally a day). Locks them, then re-routes the affected workers. */
@@ -352,13 +361,15 @@ export async function reassign(rows: number[], worker: number, day: number | nul
       lockedDay: day !== null ? true : same ? old.lockedDay : false,
     };
   }
+  const pins = { ...s.pins };
+  for (const r of valid) delete pins[r];
   const revert = pushUndo();
-  setState({ assignments: next, selection: [] });
+  setState({ assignments: next, pins, selection: [] });
   if (!s.plan) {
     notify(`${valid.length} job${valid.length === 1 ? '' : 's'} locked to ${s.settings.workers[worker].name}. Press Route.`);
     return;
   }
-  const ok = await runRoute([...affected].sort((a, b) => a - b));
+  const ok = await runRoute([...affected].sort((a, b) => a - b), true);
   if (!ok) rollback(revert);
 }
 
@@ -366,20 +377,79 @@ export function unlockRows(rows: number[]): void {
   const s = getState();
   const next: Assignments = { ...s.assignments };
   let changed = false;
+  const pins = { ...s.pins };
   for (const r of rows) {
     const a = next[r];
     if (a && (a.lockedWorker || a.lockedDay)) {
       next[r] = { ...a, lockedWorker: false, lockedDay: false };
       changed = true;
     }
+    if (pins[r] !== undefined) {
+      delete pins[r];
+      changed = true;
+    }
   }
   if (!changed) return;
   pushUndo();
-  setState({ assignments: next, plan: s.plan ? { ...s.plan, assignments: next } : null });
+  setState({ assignments: next, pins, plan: s.plan ? { ...s.plan, assignments: next } : null });
 }
 
 export function unlockAll(): void {
   unlockRows(Object.keys(getState().assignments).map(Number));
+}
+
+/**
+ * Move one job by hand to a worker and day (day null = the worker's only route when days are
+ * not split). `index` is the position in that day's stop list (without the moved job): the whole
+ * day is then pinned in the order shown. index null = the router finds the best spot.
+ */
+export async function moveStop(row: number, worker: number, day: number | null, index: number | null): Promise<void> {
+  const s = getState();
+  if (s.busy || !s.plan) return;
+  if (s.settings.simpleMode) {
+    notify('Simple (old program) mode has one worker and no days. Untick it on the Setup tab to move jobs by hand.', 'warn');
+    return;
+  }
+  if (!jobMap(s.extracted).has(row) || worker < 0 || worker >= s.settings.workers.length) return;
+  const from = indexPlan(s.plan).get(row);
+  const fromWorker = from?.route.worker ?? s.assignments[row]?.worker ?? worker;
+  const sameDay = !!from && from.route.worker === worker && from.route.day === day;
+  if (sameDay && index === null) return;
+
+  const assignments: Assignments = { ...s.assignments, [row]: { worker, day, lockedWorker: true, lockedDay: day !== null } };
+  const pins = { ...s.pins };
+  delete pins[row];
+  if (index !== null) {
+    const target = s.plan.routes.find((r) => r.worker === worker && r.day === day);
+    const order = (target?.stops ?? []).map((st) => st.row).filter((r) => r !== row);
+    order.splice(Math.max(0, Math.min(index, order.length)), 0, row);
+    // Pin and lock the whole day so a re-split cannot move these jobs and the order holds.
+    order.forEach((r, i) => {
+      pins[r] = i + 1;
+      assignments[r] = { worker, day, lockedWorker: true, lockedDay: day !== null };
+    });
+    if (sameDay && order.every((r, i) => target?.stops[i]?.row === r)) return;
+  }
+  const revert = pushUndo();
+  setState({ assignments, pins, selection: [] });
+  const ok = await runRoute([...new Set([fromWorker, worker])].sort((a, b) => a - b), true);
+  if (!ok) rollback(revert);
+}
+
+/** Drop the hand-set order of one day and let the router re-optimise it (jobs stay in that day). */
+export async function unpinDay(worker: number, day: number | null): Promise<void> {
+  const s = getState();
+  if (s.busy || !s.plan) return;
+  const route = s.plan.routes.find((r) => r.worker === worker && r.day === day);
+  if (!route) return;
+  const pins = { ...s.pins };
+  let changed = false;
+  for (const st of route.stops) if (pins[st.row] !== undefined) { delete pins[st.row]; changed = true; }
+  if (!changed) return;
+  const revert = pushUndo();
+  setState({ pins });
+  const ok = await runRoute([worker], true);
+  if (!ok) rollback(revert);
 }
 
 /** Reorder days of one worker: day `from` moves to position `to` (both 1-based, as displayed). */
@@ -396,7 +466,7 @@ export async function moveDay(worker: number, from: number, to: number): Promise
   const order = shown.map((d) => cur?.[d - 1] ?? d);
   const revert = pushUndo();
   setState({ dayOrder: { ...s.dayOrder, [worker]: order } });
-  const ok = await runRoute([worker]);
+  const ok = await runRoute([worker], true);
   if (!ok) rollback(revert);
 }
 
@@ -418,6 +488,7 @@ export function savePlanFile(): void {
     settings: s.settings,
     assignments: s.assignments,
     dayOrder: s.dayOrder,
+    pins: s.pins,
     plan: s.plan,
   });
   downloadBlob(new Blob([text], { type: 'application/json' }), `${s.fileName.replace(/\.[^.]+$/, '') || 'jobs'}.plan.json`);
@@ -437,6 +508,7 @@ export async function applyPlanFile(text: string): Promise<void> {
     settings: { ...f.settings, tileUrl: s.settings.tileUrl, roadServerUrl: s.settings.roadServerUrl, roadServerConfirmed: s.settings.roadServerConfirmed },
     assignments: f.plan ? f.plan.assignments : f.assignments,
     dayOrder: f.dayOrder ?? {},
+    pins: f.pins ?? {},
     plan: f.plan,
     planStale: false,
     selection: [],
@@ -466,6 +538,7 @@ export function restore(): void {
     settings,
     assignments: d.plan ? d.plan.assignments : d.assignments,
     dayOrder: d.dayOrder ?? {},
+    pins: d.pins ?? {},
     plan: d.plan,
     planStale: d.planStale,
     notice: { kind: 'info', text: 'Restored your last session from this browser.' },

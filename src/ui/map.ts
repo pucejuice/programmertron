@@ -3,8 +3,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { OSM_COPYRIGHT_URL, OSM_TILE_URL } from '../core/defaults';
 import { centroid } from '../core/geo';
-import type { Job, LatLon } from '../types';
-import { reassign, unlockRows, updateSettings } from './actions';
+import type { DayRoute, Job, LatLon } from '../types';
+import { moveStop, reassign, unlockRows, updateSettings } from './actions';
 import { clear, h } from './dom';
 import { attachSelection, pointInPolygon, type SelectMode } from './lasso';
 import { indexPlan, jobMap, routesOfWorker } from './planutil';
@@ -48,8 +48,9 @@ export function createMapView(wrap: HTMLElement): MapView {
   const pickText = h('span');
   const pickCancel = h('button', { type: 'button', class: 'btn small' }, 'Cancel');
   const pickBar = h('div', { class: 'jr-overlay jr-pickbar', hidden: true, role: 'status' }, pickText, pickCancel);
+  const dragHint = h('div', { class: 'jr-overlay jr-draghint', hidden: true, role: 'status', testid: 'map-drag-hint' });
   const hint = h('div', { class: 'jr-overlay jr-hint' }, h('strong', null, 'No jobs yet'), h('span', null, 'Load a CSV or XLSX file, or try the sample data. The basemap loads once data is loaded.'));
-  wrap.append(canvasEl, bar, selBar, pickBar, hint);
+  wrap.append(canvasEl, bar, selBar, pickBar, hint, dragHint);
 
   const map = L.map(canvasEl, { zoomControl: true, boxZoom: false, preferCanvas: false, zoomSnap: 0.5, attributionControl: true });
   map.attributionControl.setPrefix(false);
@@ -162,7 +163,82 @@ export function createMapView(wrap: HTMLElement): MapView {
     return el;
   }
 
+  const routeKey = (worker: number, day: number | null) => `${worker}:${day ?? ''}`;
+  const routeLines = new Map<string, L.Polyline>();
+  const lineStyle = { weight: 3, opacity: 0.75 };
+
+  /**
+   * Drag a job marker onto another day's stops or route line to move it into that day.
+   * The router then fits it in (or around a hand-set order). Dropped anywhere else, it snaps back.
+   */
+  function attachMarkerDrag(m: L.Marker, job: Job, own: DayRoute): void {
+    let target: DayRoute | null = null;
+    let stops: { p: L.Point; route: DayRoute }[] = [];
+    let paths: { pts: L.Point[]; route: DayRoute }[] = [];
+    const setTarget = (t: DayRoute | null) => {
+      if (t === target) return;
+      if (target) routeLines.get(routeKey(target.worker, target.day))?.setStyle(lineStyle);
+      target = t;
+      if (t) routeLines.get(routeKey(t.worker, t.day))?.setStyle({ weight: 7, opacity: 1 });
+      const ws = getState().settings.workers;
+      dragHint.textContent = t
+        ? `Drop to move ${job.label || 'this job'} to ${ws[t.worker]?.name ?? 'worker'}${t.day !== null ? `, day ${t.day}` : ''}`
+        : 'Drag onto another day\u2019s route or stops';
+      dragHint.classList.toggle('ok', !!t);
+    };
+    m.on('dragstart', () => {
+      const s = getState();
+      map.closePopup();
+      m.closeTooltip();
+      const byRow = jobMap(s.extracted);
+      stops = [];
+      paths = [];
+      for (const r of s.plan?.routes ?? []) {
+        const pts: L.Point[] = [map.latLngToLayerPoint([r.start.lat, r.start.lon])];
+        for (const st of r.stops) {
+          const j = byRow.get(st.row);
+          if (!j || st.row === job.row) continue;
+          const p = map.latLngToLayerPoint([j.lat, j.lon]);
+          pts.push(p);
+          stops.push({ p, route: r });
+        }
+        if (r.end) pts.push(map.latLngToLayerPoint([r.end.lat, r.end.lon]));
+        paths.push({ pts, route: r });
+      }
+      target = null;
+      setTarget(null);
+      dragHint.hidden = false;
+    });
+    m.on('drag', () => {
+      const p = map.latLngToLayerPoint(m.getLatLng());
+      let best: DayRoute | null = null;
+      let bestD = 30;
+      for (const st of stops) {
+        const d = p.distanceTo(st.p);
+        if (d < bestD) { bestD = d; best = st.route; }
+      }
+      if (!best) {
+        bestD = 16;
+        for (const path of paths) {
+          for (let i = 1; i < path.pts.length; i++) {
+            const d = L.LineUtil.pointToSegmentDistance(p, path.pts[i - 1], path.pts[i]);
+            if (d < bestD) { bestD = d; best = path.route; }
+          }
+        }
+      }
+      setTarget(best && !(best.worker === own.worker && best.day === own.day) ? best : null);
+    });
+    m.on('dragend', () => {
+      const t = target;
+      setTarget(null);
+      dragHint.hidden = true;
+      if (t) void moveStop(job.row, t.worker, t.day, null);
+      else m.setLatLng([job.lat, job.lon]);
+    });
+  }
+
   function drawData(s: AppState): void {
+    routeLines.clear();
     routeLayer.clearLayers();
     markerLayer.clearLayers();
     baseLayer.clearLayers();
@@ -184,13 +260,13 @@ export function createMapView(wrap: HTMLElement): MapView {
         if (r.end) pts.push([r.end.lat, r.end.lon]);
         const line = L.polyline(pts, {
           color: colorOf(r.worker),
-          weight: 3,
-          opacity: 0.75,
+          ...lineStyle,
           dashArray: r.day !== null && r.day % 2 === 0 ? '7 6' : undefined,
           renderer: big ? canvas : undefined,
           interactive: !big,
         });
         if (!big) line.bindTooltip(`${workers[r.worker]?.name ?? 'Worker'}${r.day !== null ? `, day ${r.day}` : ''}: ${r.totalKm.toFixed(1)} km`, { sticky: true });
+        routeLines.set(routeKey(r.worker, r.day), line);
         routeLayer.addLayer(line);
       }
     }
@@ -201,6 +277,7 @@ export function createMapView(wrap: HTMLElement): MapView {
       const w = info?.route.worker ?? a?.worker;
       const color = colorOf(w);
       const locked = !!(a && (a.lockedWorker || a.lockedDay));
+      const canDrag = !!info && !s.settings.simpleMode && (s.plan?.routes.length ?? 0) > 1;
       let m: L.Marker | L.CircleMarker;
       if (big) {
         m = L.circleMarker([j.lat, j.lon], {
@@ -211,14 +288,17 @@ export function createMapView(wrap: HTMLElement): MapView {
         m = L.marker([j.lat, j.lon], {
           icon: L.divIcon({
             className: 'jr-pin-wrap',
-            html: `<span class="jr-pin" style="background:${color};color:${textOn(color)}">${label}</span>${locked ? LOCK_SVG : ''}`,
+            html: `<span class="jr-pin" data-row="${j.row}" style="background:${color};color:${textOn(color)}">${label}</span>${locked ? LOCK_SVG : ''}`,
             iconSize: [24, 24],
             iconAnchor: [12, 12],
           }),
           riseOnHover: true,
           keyboard: false,
           bubblingMouseEvents: false,
+          draggable: canDrag,
+          autoPan: true,
         });
+        if (canDrag && info) attachMarkerDrag(m as L.Marker, j, info.route);
       }
       m.on('click', () => setState({ highlightRow: j.row }));
       m.bindPopup(() => popupContent(j.row), { minWidth: 190 });

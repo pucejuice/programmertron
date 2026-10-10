@@ -22,6 +22,8 @@ export interface AppState {
   settings: Settings;
   assignments: Assignments;
   dayOrder: Record<number, number[]>;
+  /** Manual stop order set by dragging: row -> position within its day (used as MANUAL_SEQ). */
+  pins: Record<number, number>;
   plan: Plan | null;
   /** Settings or data changed since the plan was built. */
   planStale: boolean;
@@ -45,6 +47,7 @@ export function initialState(): AppState {
     settings: defaultSettings(),
     assignments: {},
     dayOrder: {},
+    pins: {},
     plan: null,
     planStale: false,
     tab: 'load',
@@ -71,7 +74,7 @@ export function subscribe(fn: Listener): () => void {
 }
 
 /** Keys whose change should trigger an autosave. */
-const PERSISTED: (keyof AppState)[] = ['table', 'mapping', 'fileName', 'settings', 'assignments', 'dayOrder', 'plan', 'planStale'];
+const PERSISTED: (keyof AppState)[] = ['table', 'mapping', 'fileName', 'settings', 'assignments', 'dayOrder', 'pins', 'plan', 'planStale'];
 
 export function setState(patch: Partial<AppState>): void {
   const prev = state;
@@ -85,6 +88,7 @@ export function setState(patch: Partial<AppState>): void {
 export interface Snapshot {
   assignments: Assignments;
   dayOrder: Record<number, number[]>;
+  pins: Record<number, number>;
   plan: Plan | null;
   planStale: boolean;
 }
@@ -96,6 +100,7 @@ let redoStack: Snapshot[] = [];
 const snap = (): Snapshot => ({
   assignments: state.assignments,
   dayOrder: state.dayOrder,
+  pins: state.pins,
   plan: state.plan,
   planStale: state.planStale,
 });
@@ -158,6 +163,7 @@ export interface SavedState {
   settings: Settings;
   assignments: Assignments;
   dayOrder: Record<number, number[]>;
+  pins?: Record<number, number>;
   plan: Plan | null;
   planStale: boolean;
 }
@@ -182,6 +188,7 @@ export function saveNow(): void {
       settings: s.settings,
       assignments: s.assignments,
       dayOrder: s.dayOrder,
+      pins: s.pins,
       plan: s.plan,
       planStale: s.planStale,
     };

@@ -112,6 +112,16 @@ rows, settings, assignments, locks) saved only to your disk.
   km/h, all user-entered.
 - Manual reassignment: click or box-select jobs and assign a worker or day; this locks them
   (kept on re-run until Unlock all). Undo/redo for at least 20 steps.
+- Drag and drop (mouse or finger; on touch screens use the grip at the left of each stop):
+  - in the Plan tab, drop a job between two stops to put it exactly there. That day keeps
+    the order you set ("Manual order", stored as MANUAL_SEQ-style anchors) until you press
+    "Re-optimise this day";
+  - drop a job on a day or worker heading to let the router fit it into that day or worker;
+  - drag a day heading onto another day to reorder days;
+  - on the map, drag a job marker onto another day's stops or route line to move it into that
+    day (useful for working an outlier into a nearby run). Dropped anywhere else, it snaps back.
+  After a manual move only the moved job changes day; the other days keep their jobs (a day
+  may go over the jobs-per-day target). Press Route for a full re-plan that keeps your locks.
 
 ## Grouping and routing method
 
