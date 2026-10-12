@@ -150,6 +150,8 @@ export interface DayRoute {
   hours?: number;
   /** e.g. "2-opt stopped at the 5 s time limit". */
   note?: string;
+  /** Fingerprint of the jobs, hand-set order, start and end this route was built from (reuse check). */
+  inputKey?: string;
 }
 
 export interface Plan {

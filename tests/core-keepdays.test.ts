@@ -43,3 +43,57 @@ describe('keepDays (manual moves)', () => {
     expect(next.routes[0].stops.map((s) => s.row)).toEqual(want);
   });
 });
+
+describe('manual changes re-route only the altered days', () => {
+  const straightKm = (pts: { lat: number; lon: number }[]) =>
+    pts.map((a) => pts.map((b) => Math.hypot(a.lat - b.lat, a.lon - b.lon) * 111));
+  const roadSpy = () => {
+    const calls: number[] = [];
+    const fn = async (pts: { lat: number; lon: number }[]) => {
+      calls.push(pts.length);
+      const km = straightKm(pts);
+      return { km, min: km.map((r) => r.map((v) => v)) };
+    };
+    return { calls, fn };
+  };
+  const road = { roadServerUrl: 'https://osrm.example.org', roadServerConfirmed: true, dayMode: 'count' as const, jobsPerDay: 7 };
+
+  it('moving a job between two days routes exactly those two days; the rest are reused untouched', async () => {
+    const { jobs } = jobsFromCsv(PARITY_40_CSV);
+    const spy0 = roadSpy();
+    const first = await buildPlan(input(jobs, road), { roadTable: spy0.fn });
+    expect(first.distMode).toBe('road');
+    expect(spy0.calls.length).toBe(6);
+    const moved = first.routes[0].stops[0].row;
+    const assignments = { ...first.assignments, [moved]: { worker: 0, day: 3, lockedWorker: true, lockedDay: true } };
+    const spy = roadSpy();
+    const next = await buildPlan(input(jobs, road, { assignments, onlyWorkers: [0], previous: first, keepDays: true }), { roadTable: spy.fn });
+    expect(spy.calls.length).toBe(2);
+    expect(next.distMode).toBe('road');
+    for (const d of [2, 4, 5, 6]) {
+      expect(next.routes.find((r) => r.day === d)).toEqual(first.routes.find((r) => r.day === d));
+    }
+    expect(next.routes.flatMap((r) => r.stops).length).toBe(40);
+  });
+
+  it('reordering within one day routes only that day; reordering days routes none', async () => {
+    const { jobs } = jobsFromCsv(PARITY_40_CSV);
+    const first = await buildPlan(input(jobs, road), { roadTable: roadSpy().fn });
+    const d2 = first.routes[1].stops.map((s) => s.row).reverse();
+    const pinned = jobs.map((j) => (d2.includes(j.row) ? { ...j, manualSeq: d2.indexOf(j.row) + 1 } : j));
+    const spy = roadSpy();
+    const next = await buildPlan(input(pinned, road, { assignments: first.assignments, onlyWorkers: [0], previous: first, keepDays: true }), { roadTable: spy.fn });
+    expect(spy.calls.length).toBe(1);
+    expect(next.routes[1].stops.map((s) => s.row)).toEqual(d2);
+
+    const spy2 = roadSpy();
+    const swapped = await buildPlan(
+      input(jobs, road, { assignments: first.assignments, onlyWorkers: [0], previous: first, keepDays: true, dayOrder: { 0: [2, 1, 3, 4, 5, 6] } }),
+      { roadTable: spy2.fn },
+    );
+    expect(spy2.calls.length).toBe(0);
+    expect(swapped.routes[0].stops).toEqual(first.routes[1].stops);
+    expect(swapped.routes[1].stops).toEqual(first.routes[0].stops);
+    expect(swapped.distMode).toBe('road');
+  });
+});

@@ -122,6 +122,9 @@ rows, settings, assignments, locks) saved only to your disk.
     day (useful for working an outlier into a nearby run). Dropped anywhere else, it snaps back.
   After a manual move only the moved job changes day; the other days keep their jobs (a day
   may go over the jobs-per-day target). Press Route for a full re-plan that keeps your locks.
+  Only the altered days are re-routed (the day the job left and the day it joined, or just
+  the reordered day); unchanged days keep their route, so in Road network mode no extra
+  server requests are made for them.
 
 ## Grouping and routing method
 

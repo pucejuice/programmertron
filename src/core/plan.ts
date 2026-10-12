@@ -265,12 +265,28 @@ export async function buildPlan(input: PlanInput, opts: PlanOptions = {}): Promi
   let roadOk = 0;
   const total = tasks.length;
   opts.onProgress?.({ done: 0, total, message: 'Grouping complete' });
+  // After a manual change (keepDays) only the altered days need routing: a day whose jobs,
+  // hand-set order, start and end are unchanged keeps its previous route (no 2-opt, no road
+  // request). Only when the distance mode matches, so a straight route is never passed off as road.
+  const dayKey = (worker: number, start: LatLon, end: LatLon | null, js: { row: number; manualSeq: number | null }[]) =>
+    `${worker}|${start.lat},${start.lon}|${end ? `${end.lat},${end.lon}` : '-'}|` +
+    js.map((j) => `${j.row}:${j.manualSeq ?? ''}`).sort().join(',');
+  const reuse = new Map<string, DayRoute>();
+  if (partial && prev && input.keepDays && useRoad === (prev.distMode === 'road')) {
+    for (const r of prev.routes) if (processSet.has(r.worker) && r.inputKey) reuse.set(r.inputKey, r);
+  }
   for (let t = 0; t < tasks.length; t++) {
     check();
     const task = tasks[t];
     const start = startFor(task.worker);
     const end = endFor(start);
-    const r = await routeTask(task, start, end);
+    const key = dayKey(task.worker, start, end, task.jobs);
+    const old = reuse.get(key);
+    let r: DayRoute;
+    if (old) {
+      r = { ...old, worker: task.worker, day: task.day };
+      if (useRoad) roadOk++;
+    } else r = { ...(await routeTask(task, start, end)), inputKey: key };
     routes.push(r);
     opts.onProgress?.({
       done: t + 1,
