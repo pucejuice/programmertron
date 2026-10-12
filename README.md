@@ -155,6 +155,10 @@ or-opt moves of free jobs only.
 - Distances are straight-line (haversine, R = 6371 km) by default, not road distances. The
   "Distances: Straight line | Road network" switch at the top of the panel changes this.
 - "Simple (old program) mode" is on the Setup tab. It always uses straight-line distances.
+- In Road network mode the map also draws each day's actual road path, fetched from the same
+  server after routing (one request per day, cached for the session; in the browser memory
+  only). If a path cannot be fetched that day is drawn as a straight line with a warning; the
+  distances are not affected. Printed run-sheet sketches stay straight-line.
 - The public OSRM demo server is for light use only (one request per second, which the app
   respects); a large plan with many days is slow on it. Use your own OSRM server for regular work.
 - Routing is a heuristic (nearest-neighbour plus 2-opt, 5 s limit per route); it is not optimal.

@@ -5,6 +5,8 @@ import { OSM_COPYRIGHT_URL, OSM_TILE_URL } from '../core/defaults';
 import { centroid } from '../core/geo';
 import type { DayRoute, Job, LatLon } from '../types';
 import { moveStop, reassign, unlockRows, updateSettings } from './actions';
+import { osrmRoutePath } from '../net/osrm';
+import { roadOn } from './road';
 import { clear, h } from './dom';
 import { attachSelection, pointInPolygon, type SelectMode } from './lasso';
 import { indexPlan, jobMap, routesOfWorker } from './planutil';
@@ -25,6 +27,10 @@ function textOn(hex: string): string {
 }
 
 let lastTile = OSM_TILE_URL;
+
+/** Road paths already fetched this session, keyed by server + the ordered points. In memory only. */
+const roadPathCache = new Map<string, [number, number][]>();
+const pathKey = (server: string, pts: [number, number][]) => `${server}|${pts.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join(';')}`;
 
 export interface MapView {
   update(s: AppState, prev: AppState): void;
@@ -49,8 +55,9 @@ export function createMapView(wrap: HTMLElement): MapView {
   const pickCancel = h('button', { type: 'button', class: 'btn small' }, 'Cancel');
   const pickBar = h('div', { class: 'jr-overlay jr-pickbar', hidden: true, role: 'status' }, pickText, pickCancel);
   const dragHint = h('div', { class: 'jr-overlay jr-draghint', hidden: true, role: 'status', testid: 'map-drag-hint' });
+  const roadStatus = h('div', { class: 'jr-overlay jr-roadstatus', hidden: true, role: 'status', testid: 'road-paths-status' });
   const hint = h('div', { class: 'jr-overlay jr-hint' }, h('strong', null, 'No jobs yet'), h('span', null, 'Load a CSV or XLSX file, or try the sample data. The basemap loads once data is loaded.'));
-  wrap.append(canvasEl, bar, selBar, pickBar, hint, dragHint);
+  wrap.append(canvasEl, bar, selBar, pickBar, hint, dragHint, roadStatus);
 
   const map = L.map(canvasEl, { zoomControl: true, boxZoom: false, preferCanvas: false, zoomSnap: 0.5, attributionControl: true });
   map.attributionControl.setPrefix(false);
@@ -258,7 +265,8 @@ export function createMapView(wrap: HTMLElement): MapView {
           if (j) pts.push([j.lat, j.lon]);
         }
         if (r.end) pts.push([r.end.lat, r.end.lon]);
-        const line = L.polyline(pts, {
+        const road = roadServer(s) ? roadPathCache.get(pathKey(roadServer(s), pts)) : undefined;
+        const line = L.polyline(road ?? pts, {
           color: colorOf(r.worker),
           ...lineStyle,
           dashArray: r.day !== null && r.day % 2 === 0 ? '7 6' : undefined,
@@ -312,6 +320,60 @@ export function createMapView(wrap: HTMLElement): MapView {
     }
 
     drawBases(s, jobs);
+  }
+
+  // ---------- road paths (Road network mode only) ----------
+
+  /** The confirmed road server when the plan was routed on roads, else ''. */
+  function roadServer(s: AppState): string {
+    return s.plan && s.plan.distMode === 'road' && !s.settings.simpleMode && roadOn(s.settings) ? s.settings.roadServerUrl : '';
+  }
+
+  let roadToken = 0;
+
+  /**
+   * Fetch the road path of each day (in visiting order) from the same server the plan used,
+   * one request at a time, and swap it in for the straight line. Failures keep the straight
+   * line and are reported once.
+   */
+  async function loadRoadPaths(s: AppState): Promise<void> {
+    const token = ++roadToken;
+    const server = roadServer(s);
+    roadStatus.hidden = true;
+    if (!server || !s.plan) return;
+    const byRow = jobMap(s.extracted);
+    const todo: { key: string; pts: [number, number][]; rk: string }[] = [];
+    for (const r of s.plan.routes) {
+      const pts: [number, number][] = [[r.start.lat, r.start.lon]];
+      for (const st of r.stops) {
+        const j = byRow.get(st.row);
+        if (j) pts.push([j.lat, j.lon]);
+      }
+      if (r.end) pts.push([r.end.lat, r.end.lon]);
+      const key = pathKey(server, pts);
+      if (!roadPathCache.has(key) && pts.length >= 2) todo.push({ key, pts, rk: routeKey(r.worker, r.day) });
+    }
+    if (!todo.length) return;
+    let done = 0;
+    const failed: string[] = [];
+    const show = () => { roadStatus.textContent = `Loading road paths: ${done} of ${todo.length}`; };
+    roadStatus.hidden = false;
+    show();
+    for (const t of todo) {
+      if (token !== roadToken) return;
+      try {
+        const path = await osrmRoutePath(server, t.pts.map(([lat, lon]) => ({ lat, lon })), fetch.bind(globalThis));
+        roadPathCache.set(t.key, path);
+        if (token === roadToken) routeLines.get(t.rk)?.setLatLngs(path);
+      } catch (e) {
+        failed.push(e instanceof Error ? e.message : String(e));
+      }
+      done++;
+      if (token === roadToken) show();
+    }
+    if (token !== roadToken) return;
+    roadStatus.hidden = true;
+    if (failed.length) notify(`Could not load the road path for ${failed.length} of ${todo.length} route${todo.length === 1 ? '' : 's'} (${failed[0]}); those are drawn as straight lines. Distances are not affected.`, 'warn');
   }
 
   function drawBases(s: AppState, jobs: Job[]): void {
@@ -396,6 +458,7 @@ export function createMapView(wrap: HTMLElement): MapView {
   drawTiles(first);
   drawData(first);
   drawChrome(first);
+  void loadRoadPaths(first);
 
   return {
     update(s, prev) {
@@ -404,6 +467,7 @@ export function createMapView(wrap: HTMLElement): MapView {
       const dataChanged =
         s.extracted !== prev.extracted || s.plan !== prev.plan || s.assignments !== prev.assignments || s.settings !== prev.settings || s.selection !== prev.selection;
       if (dataChanged) drawData(s);
+      if (s.plan !== prev.plan || roadServer(s) !== roadServer(prev)) void loadRoadPaths(s);
       if (s.extracted !== prev.extracted && s.extracted && s.extracted.jobs.length && (!prev.extracted || prev.table !== s.table)) fit();
       if (dataChanged || s.highlightRow !== prev.highlightRow) drawHighlight(s);
     },

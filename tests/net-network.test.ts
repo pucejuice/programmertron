@@ -4,8 +4,8 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { lookupBaseTown, type KV } from '../src/net/base';
 import { geocodeAddress, parseLatLonText } from '../src/net/geocode';
-import { isAllowedUrl, nominatimReverseUrl, nominatimSearchUrl, osrmTableUrl, overpassBody, overpassQuery } from '../src/net/endpoints';
-import { osrmProvider } from '../src/net/osrm';
+import { isAllowedUrl, nominatimReverseUrl, nominatimSearchUrl, osrmRouteUrl, osrmTableUrl, overpassBody, overpassQuery } from '../src/net/endpoints';
+import { osrmProvider, osrmRoutePath } from '../src/net/osrm';
 import { rateLimited, resetRateLimits } from '../src/net/ratelimit';
 import { OSM_TILE_URL } from '../src/core/defaults';
 
@@ -281,6 +281,37 @@ describe('osrmProvider', () => {
     await expect(osrmProvider('http://l', resp({}, false))(pts)).rejects.toThrow(/HTTP 500/);
     await expect(osrmProvider('http://l', resp({ code: 'NoTable' }))(pts)).rejects.toThrow(/NoTable/);
     await expect(osrmProvider('http://l', resp({ code: 'Ok', distances: [[0]], durations: [[0]] }))(pts)).rejects.toThrow(/malformed|no distance/);
+  });
+});
+
+describe('osrmRoutePath', () => {
+  it('builds the route URL in visiting order', () => {
+    expect(osrmRouteUrl('https://osrm.example.org/', [{ lat: 1, lon: 2 }, { lat: 3.5, lon: 4 }])).toBe(
+      'https://osrm.example.org/route/v1/driving/2.000000,1.000000;4.000000,3.500000?overview=full&geometries=geojson&steps=false',
+    );
+  });
+  it('returns [lat, lon] pairs and throws on bad answers', async () => {
+    const pts = [{ lat: 1, lon: 2 }, { lat: 3, lon: 4 }];
+    const resp = (body: unknown, ok = true) => (async () => ({ ok, status: ok ? 200 : 503, json: async () => body }) as unknown as Response) as unknown as typeof fetch;
+    const geo = { code: 'Ok', routes: [{ geometry: { type: 'LineString', coordinates: [[2, 1], [2.5, 1.7], [4, 3]] } }] };
+    expect(await osrmRoutePath('http://localhost:5000', pts, resp(geo))).toEqual([[1, 2], [1.7, 2.5], [3, 4]]);
+    await expect(osrmRoutePath('http://localhost:5000', pts, resp({}, false))).rejects.toThrow(/HTTP 503/);
+    await expect(osrmRoutePath('http://localhost:5000', pts, resp({ code: 'NoRoute' }))).rejects.toThrow(/NoRoute/);
+    await expect(osrmRoutePath('http://localhost:5000', pts, resp({ code: 'Ok', routes: [] }))).rejects.toThrow(/no route path/);
+  });
+  it('splits long routes into parts that share their joining point', async () => {
+    const pts = Array.from({ length: 150 }, (_, i) => ({ lat: -30 - i / 100, lon: 150 }));
+    const calls: string[] = [];
+    const f = (async (url: string) => {
+      calls.push(url);
+      const coords = url.split('/driving/')[1].split('?')[0].split(';').map((c) => c.split(',').map(Number));
+      return { ok: true, status: 200, json: async () => ({ code: 'Ok', routes: [{ geometry: { coordinates: coords } }] }) } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const path = await osrmRoutePath('http://localhost:5000', pts, f);
+    expect(calls.length).toBe(2);
+    expect(calls.every((u) => u.split('/driving/')[1].split('?')[0].split(';').length <= 90)).toBe(true);
+    expect(path[0]).toEqual([-30, 150]);
+    expect(path[path.length - 1]).toEqual([-31.49, 150]);
   });
 });
 

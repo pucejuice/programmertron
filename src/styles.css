@@ -385,3 +385,4 @@ body.dragging-now, body.dragging-now * { cursor: grabbing !important; user-selec
 .jr-draghint { top: 56px; left: 50%; transform: translateX(-50%); font-weight: 600; white-space: nowrap; max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; }
 .jr-draghint.ok { border-color: var(--accent); color: var(--accent); }
 .leaflet-marker-draggable .jr-pin { cursor: grab; }
+.jr-roadstatus { bottom: 28px; left: 10px; font-size: 12.5px; }

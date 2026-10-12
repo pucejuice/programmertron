@@ -39,6 +39,13 @@ export function osrmTableUrl(server: string, pts: LatLon[]): string {
   return `${base}/table/v1/driving/${coords}?annotations=distance,duration`;
 }
 
+/** OSRM route URL for stops in visiting order; returns the road path as GeoJSON. */
+export function osrmRouteUrl(server: string, pts: LatLon[]): string {
+  const base = server.trim().replace(/\/+$/, '');
+  const coords = pts.map((p) => `${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
+  return `${base}/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`;
+}
+
 function isLocalHost(h: string): boolean {
   return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
 }
